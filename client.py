@@ -42,7 +42,7 @@ class Client:
                     line, buffer = buffer.split("\n", 1)
                     if line.strip():
                         message = json.loads(line)
-                        print("受信:", message)
+                        # print("受信:", message)
                         self.handle_message(message)
         except Exception as e:
             print(f"受信エラー: {e}")

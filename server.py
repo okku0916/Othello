@@ -57,13 +57,15 @@ class Server:
         try:
             buffer = ""
             while True:
+                if not self.game or self.game.gameover:
+                    break
                 buffer += conn.recv(1024).decode()
                 # "\n"で区切られたメッセージを処理
                 while "\n" in buffer:
                     line, buffer = buffer.split("\n", 1)
                     if line.strip():
                         message = json.loads(line)
-                        print(f"プレイヤー{player_num}から受信:", message)
+                        # print(f"プレイヤー{player_num}から受信:", message)
 
                 if message["type"] == 'move':
                     self.handle_move(conn, player_num, message)
@@ -78,23 +80,23 @@ class Server:
         x = message["x"]
         y = message["y"]
         if player_num != self.game.turn:
-            print(f"プレイヤー{player_num}のターンではありません。")
+            # print(f"プレイヤー{player_num}のターンではありません。")
             return
         if self.game.can_place(x, y):
             self.game.place(x, y)
-            print(f"プレイヤー{player_num}が手を打ちました: ({x}, {y})")
+            # print(f"プレイヤー{player_num}が手を打ちました: ({x}, {y})")
             self.game.turn = (2 if self.game.turn == 1 else 1)
-            if self.game.check_pass():
-                print(f"プレイヤー{player_num}がパスしました。")
-                self.game.turn = (2 if self.game.turn == 1 else 1)
-                if self.game.check_pass():
-                    print("両プレイヤーがパスしたため、ゲームを終了します。")
-                    self.game.end_game()
             if self.game.is_board_full():
                 self.game.end_game()
+            elif self.game.check_pass():
+                # print(f"プレイヤー{player_num}がパスしました。")
+                self.game.turn = (2 if self.game.turn == 1 else 1)
+                if self.game.check_pass():
+                    # print("両プレイヤーがパスしたため、ゲームを終了します。")
+                    self.game.end_game()
             self.broadcast()
-        else:
-            print(f"プレイヤー{player_num}の手は無効です: ({x}, {y})")
+        # else:
+        #     print(f"プレイヤー{player_num}の手は無効です: ({x}, {y})")
 
     def broadcast(self):
         game_data = {
