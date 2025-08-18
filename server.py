@@ -5,9 +5,8 @@ import json
 import time
 from othello_logic import OthelloLogic
 
-# 両方のプレイヤが接続していない時に打つとself.gameがNoneになり、えらー
 class Server:
-    def __init__(self, host='localhost', port=5000):
+    def __init__(self, host='0.0.0.0', port=5000):
         self.game = None
         self.host = host
         self.port = port

@@ -4,7 +4,7 @@ class OthelloLogic():
         self.grid = 8
         self.grid_size = self.board_size // self.grid
         self.board = [[0 for i in range(self.grid)] for j in range(self.grid)]
-        for x in range(1):
+        for x in range(2):
             for y in range(2):
                 self.board[y + self.grid // 2 - 1][x + self.grid // 2 - 1] = (x + y) % 2 + 1
 
