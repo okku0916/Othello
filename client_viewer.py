@@ -12,6 +12,7 @@ class ClientViewer:
         self.gameover = False
         self.player_num = None  # プレイヤー番号を保持
         self.turn = 1  # 1が黒、2が白
+        self.room_id = None  # 部屋番号を保持
 
         pygame.init()
         self.win = pygame.display.set_mode((600, 700))
