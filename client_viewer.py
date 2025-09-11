@@ -99,9 +99,11 @@ class ClientViewer:
                 for e in pygame.event.get():  # イベント取得
                     if e.type == pygame.QUIT:
                         running = False
+                        sock.sendall((json.dumps({"type": "quit"}) + "\n").encode())
                     if e.type == pygame.KEYDOWN:
                         if e.key == pygame.K_ESCAPE:
                             running = False
+                            sock.sendall((json.dumps({"type": "quit"}) + "\n").encode())
                     if e.type == pygame.MOUSEBUTTONDOWN:
                         x = e.pos[0] // self.grid_size
                         y = e.pos[1] // self.grid_size

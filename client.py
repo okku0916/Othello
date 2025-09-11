@@ -44,10 +44,11 @@ class Client:
 
         self.lobby()
 
+    # ロビー画面の表示
     def lobby(self):
+        self.viewer = None  # クライアントビューアをリセット
         self.root = tk.Tk()
         self.root.title("ロビー")
-        # Tkinterで部屋番号入力のGUIを表示
         self.room_listbox = tk.Listbox(self.root)
         self.room_listbox.pack()
         tk.Button(self.root, text="更新", command=self.request_room_list).pack()
@@ -102,6 +103,7 @@ class Client:
             room_id = message["room"]
             self.viewer.room_id = room_id
             print(f"部屋 {room_id} に参加しました。")
+
         # オセロの状態更新
         elif message["type"] == "state":
             # クライアントビューアが初期化されるのを待つ
@@ -112,10 +114,13 @@ class Client:
             self.viewer.prev_move = message["prev_move"]
             self.viewer.valid_moves = message["valid_moves"]
             self.viewer.gameover = message["gameover"]
+
+        # 部屋リストの更新
         elif message["type"] == "room_list":
             self.room_listbox.delete(0, tk.END)
             for room in message["rooms"]:
                 self.room_listbox.insert(tk.END, f"{room["id"]}: {room["players"]}/2")
+
         # エラーメッセージの表示
         elif message["type"] == "error":
             print("エラー:", message["message"])

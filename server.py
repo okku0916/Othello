@@ -9,7 +9,7 @@ class Room:
     def __init__(self, room_id):
         self.room_id = room_id
         self.game = OthelloLogic()
-        self.players = []
+        self.players = [None, None]
         self.running = False
 
     def handle_move(self, conn, player_num, message):
@@ -48,10 +48,7 @@ class Room:
             "gameover": self.game.gameover
         }
         for i, conn in enumerate(self.players):
-            try:
-                conn.sendall((json.dumps(game_data) + "\n").encode())
-            except socket.error as e:
-                print(f"送信エラー: {e}")
+            conn.sendall((json.dumps(game_data) + "\n").encode())
 
 class Server:
     def __init__(self, host="0.0.0.0", port=5000):
@@ -60,28 +57,25 @@ class Server:
         self.host = host
         self.port = port
         self.sock = None
-        self.clients = []
+        self.clients = [] # 接続されたクライアントのリスト
 
     def start_server(self):
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.bind((self.host, self.port))
-            self.sock.listen(2)  # 最大2クライアントを待ち受け
+            self.sock.listen(16)
             print(f"オセロサーバーが開始されました。{self.host}:{self.port}")
 
             # プレイヤー接続待ち
             while True:
                 conn, addr = self.sock.accept()
-                # 接続の処理
                 self.clients.append(conn)
-                print(f"プレイヤー{len(self.clients)} ({addr[0]}:{addr[1]})が接続しました。")
+                print(f"クライアント{len(self.clients)} ({addr[0]}:{addr[1]})が接続しました。")
                 # 各プレイヤーの接続を別スレッドで処理
-                client_thread = threading.Thread(
+                threading.Thread(
                     target=self.handle_client,
                     args=(conn, len(self.clients)),
-                    daemon=True
-                )
-                client_thread.start()
+                    daemon=True).start()
 
         except socket.error as e:
             print(f"サーバーエラー: {e}")
@@ -103,22 +97,22 @@ class Server:
                     line, buffer = buffer.split("\n", 1)
                     if line.strip():
                         message = json.loads(line)
-                        print(f"プレイヤー{client_id}から受信:", message)
+                        print(f"クライアント{client_id}から受信:", message)
 
                 if message["type"] == "create_room":
                     # 二重作成防止処理
                     if conn in self.conn_to_room:
                         continue
                     room_id = len(self.rooms) + 1
-                    self.rooms[room_id] = Room(room_id)
+                    self.rooms[room_id] = Room(room_id) # 新しい部屋を作成
                     print(f"部屋{room_id}を作成しました。")
-                    self.rooms[room_id].players.append(conn)
-                    self.conn_to_room[conn] = room_id
-                    print(f"プレイヤー{client_id}が部屋{room_id}に参加しました。")
-                    player_num = len(self.rooms[room_id].players)
+                    player_num = 1  # 作成者は常に1(黒)
+                    self.rooms[room_id].players[player_num-1] = conn # 作成者を部屋に追加
+                    self.conn_to_room[conn] = room_id # 接続と部屋を紐付け
+                    print(f"クライアント{client_id}が部屋{room_id}に参加しました。")
                     conn.send((json.dumps({
                         "type": "assign",
-                        "player": player_num,
+                        "player": 1,
                         "room": room_id
                     }) + "\n").encode())
 
@@ -127,31 +121,26 @@ class Server:
                     # 二重参加防止処理
                     if conn in self.rooms[room_id].players:
                         continue
-                    self.rooms[room_id].players.append(conn)
-                    self.conn_to_room[conn] = room_id
-                    # 部屋が存在しない場合の例外処理
-                    # if room_id not in self.rooms:
-                    #     conn.send((json.dumps({
-                    #         "type": "error",
-                    #         "message": "部屋が存在しません。"
-                    #     }) + "\n").encode())
-                    print(f"プレイヤー{client_id}が部屋{room_id}に参加しました。")
-                    # プレイヤー番号を割り当て
-                    player_num = len(self.rooms[room_id].players)
-                    # 最初に接続したプレイヤーが1(黒)、次が2(白)
+                    # いない方のプレイヤー番号を割り当てる
+                    for p in self.rooms[room_id].players:
+                        if p is None:
+                            player_num = self.rooms[room_id].players.index(p) + 1
+                            break
+                    self.rooms[room_id].players[player_num-1] = conn # 参加者を部屋に追加
+                    self.conn_to_room[conn] = room_id # 接続と部屋を紐付け
+                    print(f"クライアント{client_id}が部屋{room_id}に参加しました。")
                     conn.send((json.dumps({
                         "type": "assign",
                         "player": player_num,
                         "room": room_id
                     }) + "\n").encode())
-                    if len(self.rooms[room_id].players) == 2:
+                    if all(p is not None for p in self.rooms[room_id].players):
                         print(f"部屋{room_id}の両方のプレイヤーが接続しました。ゲームを開始します。")
                         self.rooms[room_id].running = True
-                        # 初期状態を送信
-                        self.rooms[room_id].broadcast()
+                        self.rooms[room_id].broadcast() # 初期状態を送信
 
                 elif message["type"] == "list_rooms":
-                    room_list = [{"id": rid, "players": len(room.players)} for rid, room in self.rooms.items()]
+                    room_list = [{"id": rid, "players": len([p for p in room.players if p is not None])} for rid, room in self.rooms.items()]
                     conn.send((json.dumps({
                         "type": "room_list",
                         "rooms": room_list
@@ -161,11 +150,21 @@ class Server:
                     room_id = self.conn_to_room.get(conn)
                     self.rooms[room_id].handle_move(conn, player_num, message)
 
+                elif message["type"] == "quit":
+                    room_id = self.conn_to_room.get(conn)
+                    print(f"クライアント{client_id}が部屋{room_id}から退出しました。")
+                    self.rooms[room_id].players[player_num-1] = None
+                    # プレイヤーが0人になったら部屋を削除
+                    if all(p is None for p in self.rooms[room_id].players):
+                        print(f"部屋{room_id}を削除しました。")
+                        del self.rooms[room_id]
+                    del self.conn_to_room[conn]
+
         except Exception as e:
-            print(f"プレイヤー{client_id}エラー: {e}")
+            print(f"クライアント{client_id}エラー: {e}")
         finally:
             conn.close()
-            print(f"プレイヤー{client_id}が切断しました")
+            print(f"クライアント{client_id}が切断しました")
 
 
 if len(sys.argv) > 1:
