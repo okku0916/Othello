@@ -50,6 +50,14 @@ class Room:
         for i, conn in enumerate(self.players):
             conn.sendall((json.dumps(game_data) + "\n").encode())
 
+    def rematch(self):
+        self.game = OthelloLogic()
+        self.game.turn = 1
+        self.running = True
+        for i, conn in enumerate(self.players):
+            conn.sendall((json.dumps({"type": "rematch"}) + "\n").encode())
+        self.broadcast()
+
 class Server:
     def __init__(self, host="0.0.0.0", port=5000):
         self.rooms = {}
@@ -86,11 +94,6 @@ class Server:
         try:
             buffer = ""
             while True:
-                # ゲームが終了している場合、ループを抜ける(試合が終わったらそれで終わり)
-                # if self.conn_to_room[conn] is not None:
-                #     room_id = self.conn_to_room[conn]
-                #     if not self.rooms[room_id].game or self.rooms[room_id].game.gameover:
-                #         break
                 buffer += conn.recv(1024).decode()
                 # "\n"で区切られたメッセージを処理
                 while "\n" in buffer:
@@ -159,6 +162,13 @@ class Server:
                         print(f"部屋{room_id}を削除しました。")
                         del self.rooms[room_id]
                     del self.conn_to_room[conn]
+
+                elif message["type"] == "rematch":
+                    room_id = self.conn_to_room.get(conn)
+                    room = self.rooms[room_id]
+                    if all(p is not None for p in room.players):
+                        print(f"部屋{room_id}で再試合が開始されました。")
+                        room.rematch()
 
         except Exception as e:
             print(f"クライアント{client_id}エラー: {e}")

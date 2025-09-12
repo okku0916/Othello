@@ -32,18 +32,23 @@ class ClientViewer:
         self.canvas.bind("<Button-1>", self.move)
         self.score_label = tk.Label(self.root, text=f"Black: 2  White: 2", font=("Arial", 24))
         self.score_label.pack()
+        self.result_label = None
+        self.rematch_button = None
+        tk.Button(self.root, text="Quit", font=("Arial", 32), command=self.quit).place(relx=1.0, rely=0.0, anchor=tk.NE)
 
     def end(self):
         black, white = self.count()
         if black > white:
-            result_text = tk.Label(self.root, text=f"BLACK WIN! {black} vs {white}", font=("Arial", 32), fg="black", bg="white")
-            result_text.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+            self.result_text = tk.Label(self.root, text=f"BLACK WIN! {black} vs {white}", font=("Arial", 40), fg="black", bg="white")
+            self.result_text.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
         elif black < white:
-            result_text = tk.Label(self.root, text=f"WHITE WIN! {black} vs {white}", font=("Arial", 32), fg="white", bg="black")
-            result_text.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+            self.result_text = tk.Label(self.root, text=f"WHITE WIN! {black} vs {white}", font=("Arial", 40), fg="white", bg="black")
+            self.result_text.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
         else:
-            result_text = tk.Label(self.root, text=f"DRAW! {black} vs {white}", font=("Arial", 32), fg="black", bg="white")
-            result_text.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+            self.result_text = tk.Label(self.root, text=f"DRAW! {black} vs {white}", font=("Arial", 40), fg="black", bg="white")
+            self.result_text.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        self.rematch_button = tk.Button(self.root, text="Rematch", font=("Arial", 32), fg="red", command=self.rematch)
+        self.rematch_button.place(relx=0, rely=0, anchor=tk.NW)
 
     def draw(self):
         self.canvas.delete("marker") # 前の手のマーカーを消す
@@ -53,9 +58,9 @@ class ClientViewer:
         for x in range(self.grid):
             for y in range(self.grid):
                 if self.board[y][x] == 1:
-                    self.canvas.create_oval(x * self.grid_size + self.grid_size // 10, y * self.grid_size + self.grid_size // 10, (x + 1) * self.grid_size - self.grid_size // 10, (y + 1) * self.grid_size - self.grid_size // 10, fill="black")
+                    self.canvas.create_oval(x * self.grid_size + self.grid_size // 10, y * self.grid_size + self.grid_size // 10, (x + 1) * self.grid_size - self.grid_size // 10, (y + 1) * self.grid_size - self.grid_size // 10, fill="black", tags="stone")
                 if self.board[y][x] == 2:
-                    self.canvas.create_oval(x * self.grid_size + self.grid_size // 10, y * self.grid_size + self.grid_size // 10, (x + 1) * self.grid_size - self.grid_size // 10, (y + 1) * self.grid_size - self.grid_size // 10, fill="white")
+                    self.canvas.create_oval(x * self.grid_size + self.grid_size // 10, y * self.grid_size + self.grid_size // 10, (x + 1) * self.grid_size - self.grid_size // 10, (y + 1) * self.grid_size - self.grid_size // 10, fill="white", tags="stone")
         # 石を置ける場所を表示
         for x, y in self.valid_moves:
             if self.turn == self.player_num == 1:
@@ -96,3 +101,11 @@ class ClientViewer:
     def quit(self):
         self.sock.sendall((json.dumps({"type": "quit"}) + "\n").encode())
         self.root.destroy()
+
+    def rematch(self):
+        self.sock.sendall((json.dumps({"type": "rematch"}) + "\n").encode())
+
+    def reset_game(self):
+        self.canvas.delete("stone")
+        self.result_text.destroy()
+        self.rematch_button.destroy()

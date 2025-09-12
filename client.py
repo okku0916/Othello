@@ -123,6 +123,10 @@ class Client:
             for room in message["rooms"]:
                 self.room_listbox.insert(tk.END, f"{room["id"]}: {room["players"]}/2")
 
+        elif message["type"] == "rematch":
+            if self.viewer:
+                self.viewer.reset_game()
+
         # エラーメッセージの表示
         elif message["type"] == "error":
             print("エラー:", message["message"])
