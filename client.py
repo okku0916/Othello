@@ -102,6 +102,7 @@ class Client:
             self.viewer.player_num = self.player_num
             room_id = message["room"]
             self.viewer.room_id = room_id
+            self.viewer.room_id_text.config(text=f"Room ID: {room_id}")
             print(f"部屋 {room_id} に参加しました。")
 
         # オセロの状態更新
@@ -114,6 +115,7 @@ class Client:
             self.viewer.prev_move = message["prev_move"]
             self.viewer.valid_moves = message["valid_moves"]
             self.viewer.gameover = message["gameover"]
+            self.viewer.draw()
 
         # 部屋リストの更新
         elif message["type"] == "room_list":

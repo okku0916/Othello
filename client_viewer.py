@@ -1,4 +1,4 @@
-import pygame
+import tkinter as tk
 import json
 
 class ClientViewer:
@@ -14,67 +14,67 @@ class ClientViewer:
         self.player_num = None  # プレイヤー番号を保持
         self.turn = 1  # 1が黒、2が白
         self.room_id = None  # 部屋番号を保持
+        self.sock = None
 
-        pygame.init()
-        self.win = pygame.display.set_mode((600, 800))
-        pygame.display.set_caption("オセロ")
-
-    def end(self, win):
-        black, white = self.count()
-        if black > white:
-            font = pygame.font.Font(None, 100)
-            text = font.render("BLACK WIN!", True, (0, 0, 0), (255, 255, 255))
-            text_rect = text.get_rect(center=(self.board_size // 2, self.board_size // 2))
-            win.blit(text, text_rect)
-        elif black < white:
-            font = pygame.font.Font(None, 100)
-            text = font.render("WHITE WIN!", True, (255, 255, 255), (0, 0, 0))
-            text_rect = text.get_rect(center=(self.board_size // 2, self.board_size // 2))
-            win.blit(text, text_rect)
-        else:
-            font = pygame.font.Font(None, 100)
-            text = font.render("DRAW!", True, (0, 0, 0), (255, 255, 255))
-            text_rect = text.get_rect(center=(self.board_size // 2, self.board_size // 2))
-            win.blit(text, text_rect)
-
-    def draw(self, win):
-        win.fill((255, 255, 255)) # 背景リセット
-        # 緑色背景を描画
-        pygame.draw.rect(win, (0, 128, 0), (0, self.start_posy, self.board_size, self.board_size))
+        self.root = tk.Tk()
+        self.root.geometry(f"{self.board_size}x{self.board_size + 200}")
+        self.root.title("オセロ")
+        # ウィジェットの配置
+        tk.Label(self.root, text="Simple Othello", font=("Arial", 32)).pack()
+        self.room_id_text = tk.Label(self.root, text=f"Room ID: {self.room_id}", font=("Arial", 24))
+        self.room_id_text.pack()
+        self.canvas = tk.Canvas(self.root, width=self.board_size, height=self.board_size, bg="green")
         # グリッド線を描画
         for i in range(self.grid+1):
-            pygame.draw.line(win, (0, 0, 0), (0, self.start_posy + i * self.grid_size), (self.board_size, self.start_posy + i * self.grid_size))
-            pygame.draw.line(win, (0, 0, 0), (i * self.grid_size, self.start_posy), (i * self.grid_size, self.start_posy + self.board_size))
+            self.canvas.create_line(0, i * self.grid_size, self.board_size, i * self.grid_size, fill="black")
+            self.canvas.create_line(i * self.grid_size, 0, i * self.grid_size, self.board_size, fill="black")
+        self.canvas.pack()
+        self.canvas.bind("<Button-1>", self.move)
+        self.score_label = tk.Label(self.root, text=f"Black: 2  White: 2", font=("Arial", 24))
+        self.score_label.pack()
+
+    def end(self):
+        black, white = self.count()
+        if black > white:
+            result_text = tk.Label(self.root, text=f"BLACK WIN! {black} vs {white}", font=("Arial", 32), fg="black", bg="white")
+            result_text.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        elif black < white:
+            result_text = tk.Label(self.root, text=f"WHITE WIN! {black} vs {white}", font=("Arial", 32), fg="white", bg="black")
+            result_text.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        else:
+            result_text = tk.Label(self.root, text=f"DRAW! {black} vs {white}", font=("Arial", 32), fg="black", bg="white")
+            result_text.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+
+    def draw(self):
+        self.canvas.delete("marker") # 前の手のマーカーを消す
+        black, white = self.count()
+        self.score_label.config(text=f"Black: {black}  White: {white}")
         # 石を描画
         for x in range(self.grid):
             for y in range(self.grid):
                 if self.board[y][x] == 1:
-                    pygame.draw.circle(win, (0, 0, 0), (x * self.grid_size + self.grid_size // 2, self.start_posy + y * self.grid_size + self.grid_size // 2), self.grid_size // 2.5)
+                    self.canvas.create_oval(x * self.grid_size + self.grid_size // 10, y * self.grid_size + self.grid_size // 10, (x + 1) * self.grid_size - self.grid_size // 10, (y + 1) * self.grid_size - self.grid_size // 10, fill="black")
                 if self.board[y][x] == 2:
-                    pygame.draw.circle(win, (255, 255, 255), (x * self.grid_size + self.grid_size // 2, self.start_posy + y * self.grid_size + self.grid_size // 2), self.grid_size // 2.5)
+                    self.canvas.create_oval(x * self.grid_size + self.grid_size // 10, y * self.grid_size + self.grid_size // 10, (x + 1) * self.grid_size - self.grid_size // 10, (y + 1) * self.grid_size - self.grid_size // 10, fill="white")
         # 石を置ける場所を表示
         for x, y in self.valid_moves:
             if self.turn == self.player_num == 1:
-                pygame.draw.circle(win, (0, 0, 0), (x * self.grid_size + self.grid_size // 2, self.start_posy + y * self.grid_size + self.grid_size // 2), self.grid_size // 6)
+                self.canvas.create_oval(x * self.grid_size + self.grid_size // 3, y * self.grid_size + self.grid_size // 3, (x + 1) * self.grid_size - self.grid_size // 3, (y + 1) * self.grid_size - self.grid_size // 3, fill="black", tags="marker")
             elif self.turn == self.player_num == 2:
-                pygame.draw.circle(win, (255, 255, 255), (x * self.grid_size + self.grid_size // 2, self.start_posy + y * self.grid_size + self.grid_size // 2), self.grid_size // 6)
+                self.canvas.create_oval(x * self.grid_size + self.grid_size // 3, y * self.grid_size + self.grid_size // 3, (x + 1) * self.grid_size - self.grid_size // 3, (y + 1) * self.grid_size - self.grid_size // 3, fill="white", tags="marker")
         # 前の手を表示
         if self.prev_move:
             x, y = self.prev_move
-            pygame.draw.circle(win, (255, 0, 0), (x * self.grid_size + self.grid_size // 2, self.start_posy + y * self.grid_size + self.grid_size // 2), self.grid_size // 2.5, 3)
-        # テキスト表示
-        font = pygame.font.Font(None, 50)
-        othello_text = font.render("Simple Othello", True, (0, 0, 0))
-        win.blit(othello_text, (10, 10))
-        # スコア表示
-        font = pygame.font.Font(None, 30)
-        score = self.count()
-        score_text = font.render(f"Black: {score[0]}  White: {score[1]}", True, (0, 0, 0))
-        win.blit(score_text, (10, self.start_posy + self.board_size + 10))
-        # 部屋番号表示
-        if self.room_id is not None:
-            room_text = font.render(f"Room ID: {self.room_id}", True, (0, 0, 0))
-            win.blit(room_text, (10, 50))
+            self.canvas.create_oval(x * self.grid_size + self.grid_size // 10, y * self.grid_size + self.grid_size // 10, (x + 1) * self.grid_size - self.grid_size // 10, (y + 1) * self.grid_size - self.grid_size // 10, outline="red", width=3, tags="marker")
+        # ゲーム終了時の表示
+        if self.gameover:
+            self.end()
+
+    def move(self, event):
+        x = event.x // (self.board_size // self.grid)
+        y = event.y // (self.board_size // self.grid)
+        if 0 <= x < self.grid and 0 <= y < self.grid:
+            self.sock.sendall((json.dumps({"type" : "move", "x" : x, "y" : y}) + "\n").encode())
 
     def count(self):
         black = 0
@@ -88,25 +88,11 @@ class ClientViewer:
         return (black, white)
 
     def run(self, sock=None):
-        self.win.fill((255, 255, 255))
-        running = True
-        while running:  # イベントループ
-            for e in pygame.event.get():  # イベント取得
-                if e.type == pygame.QUIT:
-                    running = False
-                    sock.sendall((json.dumps({"type": "quit"}) + "\n").encode())
-                if e.type == pygame.KEYDOWN:
-                    if e.key == pygame.K_ESCAPE:
-                        running = False
-                        sock.sendall((json.dumps({"type": "quit"}) + "\n").encode())
-                if e.type == pygame.MOUSEBUTTONDOWN:
-                    x = e.pos[0] // self.grid_size
-                    y = (e.pos[1] - self.start_posy) // self.grid_size
-                    sock.sendall((json.dumps({"type" : "move", "x" : x, "y" : y}) + "\n").encode())
-            self.draw(self.win)
-            # ゲーム終了
-            if self.gameover:
-                self.end(self.win)
-            pygame.display.update()
+        self.sock = sock
+        self.draw()
+        self.root.protocol("WM_DELETE_WINDOW", self.quit) # ウィンドウの閉じるボタンでquitを呼び出す
+        self.root.mainloop()
 
-        pygame.quit()
+    def quit(self):
+        self.sock.sendall((json.dumps({"type": "quit"}) + "\n").encode())
+        self.root.destroy()
