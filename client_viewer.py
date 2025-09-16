@@ -2,7 +2,8 @@ import tkinter as tk
 import json
 
 class ClientViewer:
-    def __init__(self):
+    def __init__(self, on_action):
+        # ゲームの状態
         self.board_size = 600
         self.grid = 8
         self.grid_size = self.board_size // self.grid
@@ -14,28 +15,17 @@ class ClientViewer:
         self.player_num = None  # プレイヤー番号を保持
         self.turn = 1  # 1が黒、2が白
         self.room_id = None  # 部屋番号を保持
-        self.sock = None
+        self.on_action = on_action # ユーザーアクションのコールバック関数(sendだけとは限らないからこの名前)
 
+        # GUI要素
         self.root = tk.Tk()
-        self.root.geometry(f"{self.board_size}x{self.board_size + 200}")
-        self.root.title("オセロ")
-        # ウィジェットの配置
-        tk.Label(self.root, text="Simple Othello", font=("Arial", 32)).pack()
-        self.room_id_text = tk.Label(self.root, text=f"Room ID: {self.room_id}", font=("Arial", 24))
-        self.room_id_text.pack()
-        self.canvas = tk.Canvas(self.root, width=self.board_size, height=self.board_size, bg="green")
-        # グリッド線を描画
-        for i in range(self.grid+1):
-            self.canvas.create_line(0, i * self.grid_size, self.board_size, i * self.grid_size, fill="black")
-            self.canvas.create_line(i * self.grid_size, 0, i * self.grid_size, self.board_size, fill="black")
-        self.canvas.pack()
-        self.canvas.bind("<Button-1>", self.move)
-        self.score_label = tk.Label(self.root, text=f"Black: 2  White: 2", font=("Arial", 24))
-        self.score_label.pack()
+        self.room_id_text = None
+        self.canvas = None
+        self.score_label = None
         self.result_label = None
         self.rematch_button = None
-        tk.Button(self.root, text="Quit", font=("Arial", 32), command=self.quit).place(relx=1.0, rely=0.0, anchor=tk.NE)
 
+    # ゲーム終了時の処理
     def end(self):
         black, white = self.count()
         if black > white:
@@ -50,6 +40,7 @@ class ClientViewer:
         self.rematch_button = tk.Button(self.root, text="Rematch", font=("Arial", 32), fg="red", command=self.rematch)
         self.rematch_button.place(relx=0, rely=0, anchor=tk.NW)
 
+    # 毎回の画面の描画処理
     def draw(self):
         self.canvas.delete("marker") # 前の手のマーカーを消す
         black, white = self.count()
@@ -75,12 +66,14 @@ class ClientViewer:
         if self.gameover:
             self.end()
 
+    # 石を置いた時の処理
     def move(self, event):
         x = event.x // (self.board_size // self.grid)
         y = event.y // (self.board_size // self.grid)
         if 0 <= x < self.grid and 0 <= y < self.grid:
-            self.sock.sendall((json.dumps({"type" : "move", "x" : x, "y" : y}) + "\n").encode())
+            self.on_action({"type" : "move", "x" : x, "y" : y})
 
+    # 石の数を数える
     def count(self):
         black = 0
         white = 0
@@ -92,20 +85,88 @@ class ClientViewer:
                     white += 1
         return (black, white)
 
-    def run(self, sock=None):
-        self.sock = sock
+    # ゲーム初回実行時の処理
+    def run(self):
+        self.create_game_screen()
         self.draw()
         self.root.protocol("WM_DELETE_WINDOW", self.quit) # ウィンドウの閉じるボタンでquitを呼び出す
         self.root.mainloop()
 
+    # 終了時の処理
     def quit(self):
-        self.sock.sendall((json.dumps({"type": "quit"}) + "\n").encode())
-        self.root.destroy()
+        if self.root.title() == "オセロ":
+            self.on_action({"type": "quit"})
+            self.create_lobby_screen()
+        else:
+            self.root.destroy()
 
+    # 再試合のリクエスト
     def rematch(self):
-        self.sock.sendall((json.dumps({"type": "rematch"}) + "\n").encode())
+        self.on_action({"type": "rematch"})
 
+    # 部屋更新のリクエスト
+    def request_room_list(self):
+        self.on_action({"type": "list_rooms"})
+
+    # リマッチ時の画面リセット
     def reset_game(self):
         self.canvas.delete("stone")
         self.result_text.destroy()
         self.rematch_button.destroy()
+
+    # ロビー画面の作成
+    def create_lobby_screen(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        self.root.title("ロビー")
+        self.root.geometry("300x400")
+        self.room_listbox = tk.Listbox(self.root)
+        self.room_listbox.pack()
+        tk.Button(self.root, text="更新", command=self.request_room_list).pack()
+        tk.Button(self.root, text="参加", command=self.join_room, width=7).pack()
+        tk.Button(self.root, text="部屋作成", command=self.create_room, width=7).pack()
+        self.request_room_list()
+        self.root.mainloop()
+
+    # ゲーム画面の作成
+    def create_game_screen(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        self.root.geometry(f"{self.board_size}x{self.board_size + 200}")
+        self.root.title("オセロ")
+        # ウィジェットの配置
+        tk.Label(self.root, text="Simple Othello", font=("Arial", 32)).pack()
+        self.room_id_text = tk.Label(self.root, text=f"Room ID: {self.room_id}", font=("Arial", 24))
+        self.room_id_text.pack()
+        self.score_label = tk.Label(self.root, text=f"Black: 2  White: 2", font=("Arial", 24))
+        self.score_label.pack()
+        self.result_label = None
+        self.rematch_button = None
+        self.canvas = tk.Canvas(self.root, width=self.board_size, height=self.board_size, bg="green")
+        # グリッド線を描画
+        for i in range(self.grid+1):
+            self.canvas.create_line(0, i * self.grid_size, self.board_size, i * self.grid_size, fill="black")
+            self.canvas.create_line(i * self.grid_size, 0, i * self.grid_size, self.board_size, fill="black")
+        self.canvas.pack()
+        self.canvas.bind("<Button-1>", self.move)
+        tk.Button(self.root, text="Quit", font=("Arial", 32), command=self.quit).place(relx=1.0, rely=0.0, anchor=tk.NE)
+
+    # 部屋リストの更新
+    def update_room_list(self, rooms):
+        self.room_listbox.delete(0, tk.END)
+        for room in rooms:
+            self.room_listbox.insert(tk.END, f"{room['id']}: {room['players']}/2")
+
+    # 部屋に参加する
+    def join_room(self):
+        selected = self.room_listbox.get(tk.ACTIVE)
+        if selected:
+            if selected.split(":")[1].strip().startswith("2"):
+                print("部屋が満員です。")
+                return
+            room_id = selected.split(":")[0]
+            self.on_action({"type": "join_room", "room": room_id})
+
+    # 部屋を作成する
+    def create_room(self):
+        self.on_action({"type": "create_room"})
