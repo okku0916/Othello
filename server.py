@@ -100,7 +100,7 @@ class Server:
                     line, buffer = buffer.split("\n", 1)
                     if line.strip():
                         message = json.loads(line)
-                        print(f"クライアント{client_id}から受信:", message)
+                        # print(f"クライアント{client_id}から受信:", message)
 
                 if message["type"] == "create_room":
                     # 二重作成防止処理
@@ -121,6 +121,20 @@ class Server:
 
                 elif message["type"] == "join_room":
                     room_id = int(message["room"])
+                    # 部屋が存在するか確認
+                    if room_id not in self.rooms:
+                        conn.send((json.dumps({
+                            "type": "error",
+                            "message": "指定された部屋は存在しません。"
+                        }) + "\n").encode())
+                        continue
+                    # 部屋が満員か確認
+                    if all(p is not None for p in self.rooms[room_id].players):
+                        conn.send((json.dumps({
+                            "type": "error",
+                            "message": "指定された部屋は満員です。"
+                        }) + "\n").encode())
+                        continue
                     # 二重参加防止処理
                     if conn in self.rooms[room_id].players:
                         continue
@@ -140,7 +154,7 @@ class Server:
                     if all(p is not None for p in self.rooms[room_id].players):
                         print(f"部屋{room_id}の両方のプレイヤーが接続しました。ゲームを開始します。")
                         self.rooms[room_id].running = True
-                        self.rooms[room_id].broadcast() # 初期状態を送信
+                        self.rooms[room_id].broadcast() # 状態を送信
 
                 elif message["type"] == "list_rooms":
                     room_list = [{"id": rid, "players": len([p for p in room.players if p is not None])} for rid, room in self.rooms.items()]
@@ -156,6 +170,7 @@ class Server:
                 elif message["type"] == "quit":
                     room_id = self.conn_to_room.get(conn)
                     print(f"クライアント{client_id}が部屋{room_id}から退出しました。")
+                    self.rooms[room_id].running = False
                     self.rooms[room_id].players[player_num-1] = None
                     # プレイヤーが0人になったら部屋を削除
                     if all(p is None for p in self.rooms[room_id].players):
