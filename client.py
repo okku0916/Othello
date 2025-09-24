@@ -25,8 +25,9 @@ class Client:
             receive.start()
 
             # ロビー画面を表示
-            self.viewer = ClientViewer(self.send_message) # コールバック関数を渡す(ログを見るときはself.send_messageをprint関数に変えるなどの使い方ができる)
+            self.viewer = ClientViewer(self.send_message, self.close) # コールバック関数を渡す(ログを見るときはself.send_messageをprint関数に変えるなどの使い方ができる)
             self.viewer.create_lobby_screen()
+            self.viewer.root.mainloop()
 
 
         except socket.error as e:
@@ -54,12 +55,20 @@ class Client:
     def handle_message(self, message):
         # プレイヤー番号と部屋番号の割り当て
         if message["type"] == "assign":
-            self.viewer.root.after(0, self.viewer.run) # メインループをメインスレッドで実行
             self.player_num = message["player"]
             self.viewer.player_num = self.player_num
+            self.viewer.is_host = message["host"]
             room_id = message["room"]
             self.viewer.room_id = room_id
             print(f"部屋 {room_id} に参加しました。")
+            if message["status"] == "paused": # 中断中の場合
+                self.viewer.root.after(0, self.viewer.run) # メインスレッドでゲーム開始
+            else:
+                self.viewer.root.after(0, self.viewer.create_room_screen) # メインスレッドで部屋画面へ
+
+        if message["type"] == "start":
+            if message["game"] == "othello":
+                self.viewer.root.after(0, self.viewer.run) # メインスレッドでゲーム開始
 
         # オセロの状態更新
         elif message["type"] == "state":
@@ -84,6 +93,9 @@ class Client:
     def send_message(self, data):
         self.client_socket.sendall((json.dumps(data) + "\n").encode())
 
+    def close(self):
+        if self.client_socket:
+            self.client_socket.close()
 
 
 if len(sys.argv) > 1:

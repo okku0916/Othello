@@ -8,9 +8,10 @@ from othello_logic import OthelloLogic
 class Room:
     def __init__(self, room_id):
         self.room_id = room_id
-        self.game = OthelloLogic()
+        # self.game = OthelloLogic()
         self.players = [None, None]
-        self.running = False
+        self.status = "waiting" # waiting, playing, paused
+        self.hosts = [False, False]
 
     def handle_move(self, conn, player_num, message):
         x = message["x"]
@@ -18,7 +19,7 @@ class Room:
         if player_num != self.game.turn:
             # print(f"プレイヤー{player_num}のターンではありません。")
             return
-        if not self.running: # ゲームが開始されていない場合
+        if self.status != "playing": # ゲームが開始されていない場合
             return
         if self.game.can_place(x, y):
             self.game.place(x, y)
@@ -50,10 +51,18 @@ class Room:
         for i, conn in enumerate(self.players):
             conn.sendall((json.dumps(game_data) + "\n").encode())
 
+    def start_game(self):
+        self.game = OthelloLogic()
+        self.game.turn = 1
+        self.status = "playing"
+        for i, conn in enumerate(self.players):
+            conn.sendall((json.dumps({"type": "start", "game": "othello"}) + "\n").encode())
+        self.broadcast()
+
     def rematch(self):
         self.game = OthelloLogic()
         self.game.turn = 1
-        self.running = True
+        self.status = "playing"
         for i, conn in enumerate(self.players):
             conn.sendall((json.dumps({"type": "rematch"}) + "\n").encode())
         self.broadcast()
@@ -110,13 +119,16 @@ class Server:
                     self.rooms[room_id] = Room(room_id) # 新しい部屋を作成
                     print(f"部屋{room_id}を作成しました。")
                     player_num = 1  # 作成者は常に1(黒)
+                    self.rooms[room_id].hosts[player_num-1] = True # 作成者をホストに設定
                     self.rooms[room_id].players[player_num-1] = conn # 作成者を部屋に追加
                     self.conn_to_room[conn] = room_id # 接続と部屋を紐付け
                     print(f"クライアント{client_id}が部屋{room_id}に参加しました。")
                     conn.send((json.dumps({
                         "type": "assign",
                         "player": 1,
-                        "room": room_id
+                        "room": room_id,
+                        "host": True,
+                        "status": self.rooms[room_id].status
                     }) + "\n").encode())
 
                 elif message["type"] == "join_room":
@@ -149,12 +161,33 @@ class Server:
                     conn.send((json.dumps({
                         "type": "assign",
                         "player": player_num,
-                        "room": room_id
+                        "room": room_id,
+                        "host": self.rooms[room_id].hosts[player_num-1],
+                        "status": self.rooms[room_id].status
                     }) + "\n").encode())
+                    # 中断中の場合はゲーム再開
+                    if self.rooms[room_id].status == "paused":
+                        print(f"部屋{room_id}でゲームが再開されました。")
+                        self.rooms[room_id].status = "playing"
+
+                elif message["type"] == "start_game":
+                    room_id = self.conn_to_room.get(conn)
+                    if room_id is None:
+                        continue
+                    if not self.rooms[room_id].hosts[player_num-1]:
+                        # ホストでない場合は無視
+                        continue
+                    if self.rooms[room_id].status == "playing":
+                        # すでにゲームが開始されている場合は無視
+                        continue
                     if all(p is not None for p in self.rooms[room_id].players):
-                        print(f"部屋{room_id}の両方のプレイヤーが接続しました。ゲームを開始します。")
-                        self.rooms[room_id].running = True
-                        self.rooms[room_id].broadcast() # 状態を送信
+                        print(f"部屋{room_id}でゲームが開始されました。")
+                        self.rooms[room_id].start_game()
+                    else:
+                        conn.send((json.dumps({
+                            "type": "error",
+                            "message": "プレイヤーが揃っていません。"
+                        }) + "\n").encode())
 
                 elif message["type"] == "list_rooms":
                     room_list = [{"id": rid, "players": len([p for p in room.players if p is not None])} for rid, room in self.rooms.items()]
@@ -170,8 +203,25 @@ class Server:
                 elif message["type"] == "quit":
                     room_id = self.conn_to_room.get(conn)
                     print(f"クライアント{client_id}が部屋{room_id}から退出しました。")
-                    self.rooms[room_id].running = False
+                    if self.rooms[room_id].status == "playing":
+                        self.rooms[room_id].status = "paused"
                     self.rooms[room_id].players[player_num-1] = None
+                    # ホスト権限の移譲
+                    self.rooms[room_id].hosts[player_num-1] = False
+                    num = player_num - 1
+                    for i in range(len(self.rooms[room_id].players)):
+                        num = (num + 1) % len(self.rooms[room_id].players)
+                        if self.rooms[room_id].players[num] is not None:
+                            self.rooms[room_id].hosts[num] = True
+                            self.rooms[room_id].players[num].sendall((json.dumps({
+                                "type": "assign",
+                                "player": num + 1,
+                                "room": room_id,
+                                "host": True,
+                                "status": self.rooms[room_id].status
+                            }) + "\n").encode())
+                            break
+
                     # プレイヤーが0人になったら部屋を削除
                     if all(p is None for p in self.rooms[room_id].players):
                         print(f"部屋{room_id}を削除しました。")
@@ -185,11 +235,14 @@ class Server:
                         print(f"部屋{room_id}で再試合が開始されました。")
                         room.rematch()
 
+        except BrokenPipeError:
+            print(f"クライアント{client_id}が切断されました。")
+        except ConnectionResetError:
+            print(f"クライアント{client_id}が切断されました。")
         except Exception as e:
             print(f"クライアント{client_id}エラー: {e}")
         finally:
             conn.close()
-            print(f"クライアント{client_id}が切断しました")
 
 
 if len(sys.argv) > 1:

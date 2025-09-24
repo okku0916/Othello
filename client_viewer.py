@@ -2,7 +2,7 @@ import tkinter as tk
 import json
 
 class ClientViewer:
-    def __init__(self, on_action):
+    def __init__(self, on_action, socket_close):
         # ゲームの状態
         self.board_size = 600
         self.grid = 8
@@ -16,9 +16,12 @@ class ClientViewer:
         self.turn = 1  # 1が黒、2が白
         self.room_id = None  # 部屋番号を保持
         self.on_action = on_action # ユーザーアクションのコールバック関数(sendだけとは限らないからこの名前)
+        self.socket_close = socket_close # ソケットを閉じる関数
+        self.is_host = False # ホストかどうか
 
         # GUI要素
         self.root = tk.Tk()
+        self.root.protocol("WM_DELETE_WINDOW", self.quit)  # ウィンドウの閉じるボタンでquitを呼び出す
         self.room_id_text = None
         self.canvas = None
         self.score_label = None
@@ -37,8 +40,9 @@ class ClientViewer:
         else:
             self.result_text = tk.Label(self.root, text=f"DRAW! {black} vs {white}", font=("Arial", 40), fg="black", bg="white")
             self.result_text.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
-        self.rematch_button = tk.Button(self.root, text="Rematch", font=("Arial", 32), fg="red", command=self.rematch)
-        self.rematch_button.place(relx=0, rely=0, anchor=tk.NW)
+        if self.is_host:
+            self.rematch_button = tk.Button(self.root, text="Rematch", font=("Arial", 32), fg="red", command=self.rematch)
+            self.rematch_button.place(relx=0, rely=0, anchor=tk.NW)
 
     # 毎回の画面の描画処理
     def draw(self):
@@ -89,15 +93,17 @@ class ClientViewer:
     def run(self):
         self.create_game_screen()
         self.draw()
-        self.root.protocol("WM_DELETE_WINDOW", self.quit) # ウィンドウの閉じるボタンでquitを呼び出す
-        self.root.mainloop()
 
     # 終了時の処理
     def quit(self):
-        if self.root.title() == "オセロ":
+        if self.root.title() == "Othello":
+            self.on_action({"type": "quit"})
+            self.create_lobby_screen()
+        elif self.root.title() == "Room":
             self.on_action({"type": "quit"})
             self.create_lobby_screen()
         else:
+            self.socket_close()
             self.root.destroy()
 
     # 再試合のリクエスト
@@ -112,28 +118,44 @@ class ClientViewer:
     def reset_game(self):
         self.canvas.delete("stone")
         self.result_text.destroy()
-        self.rematch_button.destroy()
+        self.rematch_button.destroy() if self.rematch_button else None
 
     # ロビー画面の作成
     def create_lobby_screen(self):
         for widget in self.root.winfo_children():
             widget.destroy()
-        self.root.title("ロビー")
-        self.root.geometry("300x400")
+        self.root.title("Lobby")
+        self.root.geometry("400x400")
         self.room_listbox = tk.Listbox(self.root)
         self.room_listbox.pack()
         tk.Button(self.root, text="更新", command=self.request_room_list).pack()
         tk.Button(self.root, text="参加", command=self.join_room, width=7).pack()
         tk.Button(self.root, text="部屋作成", command=self.create_room, width=7).pack()
         self.request_room_list()
-        self.root.mainloop()
+
+    # 部屋画面の作成
+    def create_room_screen(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        self.root.title("Room")
+        self.root.geometry("400x400")
+        tk.Label(self.root, text=f"Room ID: {self.room_id}", font=("Arial", 16)).pack()
+        if self.is_host:
+            tk.Label(self.root, text="ゲーム選択", font=("Arial", 16)).pack()
+            self.game_listbox = tk.Listbox(self.root)
+            self.game_listbox.pack()
+            self.game_listbox.insert(tk.END, "オセロ")
+            tk.Button(self.root, text="開始", command=lambda: self.on_action({"type": "start_game", "game": "othello"}), width=7).pack()
+        else:
+            tk.Label(self.root, text="ホストがゲームを選択するのを待っています...", font=("Arial", 16)).pack()
+        tk.Button(self.root, text="Quit", command=self.quit, width=7).pack()
 
     # ゲーム画面の作成
     def create_game_screen(self):
         for widget in self.root.winfo_children():
             widget.destroy()
         self.root.geometry(f"{self.board_size}x{self.board_size + 200}")
-        self.root.title("オセロ")
+        self.root.title("Othello")
         # ウィジェットの配置
         tk.Label(self.root, text="Simple Othello", font=("Arial", 32)).pack()
         self.room_id_text = tk.Label(self.root, text=f"Room ID: {self.room_id}", font=("Arial", 24))
